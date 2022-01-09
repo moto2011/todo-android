@@ -8,9 +8,7 @@ on:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v2
     - name: set up JDK 11
@@ -24,3 +22,71 @@ jobs:
       run: chmod +x gradlew
     - name: Build with Gradle
       run: ./gradlew build
+
+  danger:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Setup Ruby
+        uses: actions/setup-ruby@v1
+        with:
+          ruby-version: '2.6'
+#      - name: run ktlintMain
+#        run: ./gradlew ktlintMain
+      - name: run androidLint
+        run: ./gradlew lintDebug
+#      - name: Cache Gems
+#        uses: actions/cache@v1
+#        with:
+#          path: vendor/bundle
+#          key: ${{ runner.os }}-danger-${{ env.cache-name }}-gems-${{ hashFiles('**/Gemfile.lock') }}
+#          restore-keys: |
+#            ${{ runner.os }}-danger-${{ env.cache-name }}-gems-
+#            ${{ runner.os }}-danger-${{ env.cache-name }}-
+#            ${{ runner.os }}-danger-
+      - name: install danger
+        run: |
+          gem install bundler
+          bundler install
+      - name: run danger
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: danger
+
+  notification:
+    needs: [build, danger]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: get commit message
+        run: |
+          echo ::set-env name=commitmsg::$(git log --format=%B -n 1 ${{ github.event.after }})
+      # 失敗したときのSlackへの通知
+      - name: Slack Notification Failure
+        if: failure()
+        uses: rtCamp/action-slack-notify@v2.0.1
+        env:
+          SLACK_CHANNEL: general
+          SLACK_ICON: https://github.com/actions.png?size=48
+          SLACK_COLOR: '#ff0000'
+          SLACK_TITLE: ':fire: Build Failure :fire:'
+          SLACK_MESSAGE: |
+            Build failure!
+            See more detail to check github.
+            commit -> `$commitmsg`
+          SLACK_USERNAME: Github Actions
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+      # 成功した時のSlackへの通知
+      - name: Slack Notification Success
+        if: success()
+        uses: rtCamp/action-slack-notify@v2.0.1
+        env:
+          SLACK_CHANNEL: general
+          SLACK_ICON: https://github.com/actions.png?size=48
+          SLACK_TITLE: ':rocket: Build Success :rocket:'
+          SLACK_MESSAGE: |
+            Build success! yattane!
+            commit -> `$commitmsg`
+          SLACK_USERNAME: Github Actions
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
